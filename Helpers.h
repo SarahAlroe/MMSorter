@@ -7,6 +7,7 @@ class Point {
     Point operator+(const Point& other);
     Point operator-(const Point& other);
     bool operator==(const Point& other);
+    bool operator!=(const Point& other);
 };
 
 Point::Point(int newX, int newY) {
@@ -27,4 +28,7 @@ Point Point::operator-(const Point& other){
 }
 bool Point::operator==(const Point& other){
   return x==other.x && y==other.y;
+}
+bool Point::operator!=(const Point& other){
+  return x!=other.x || y!=other.y;
 }
