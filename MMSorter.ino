@@ -13,6 +13,7 @@ const PROGMEM String STATUS_RELEASE = "Releasing M&M";
 const PROGMEM String STATUS_IDLE = "Awaiting instructions";
 
 const PROGMEM String CODE_RESET = "RS";
+const PROGMEM String CODE_MOVE = "MV";
 const PROGMEM String CODE_HOME = "HM";
 const PROGMEM String CODE_CALIBRATE = "CA";
 const PROGMEM String CODE_GRAB = "GB";
@@ -33,15 +34,18 @@ const PROGMEM int SPINS_X[] = {7, 6, 5, 8};
 const PROGMEM int SPINS_Y[] = {11, 10, 9, 12};
 const PROGMEM int END_PIN_X = A0;
 const PROGMEM int END_PIN_Y = 13;
-const PROGMEM int RELAY_PIN_A = 2;
-const PROGMEM int RELAY_PIN_B = 3;
+const PROGMEM int RELAY_PIN_ARM = 2;
+const PROGMEM int RELAY_PIN_SUCC = 3;
 const PROGMEM int AUX_PIN = 4;
 
+const PROGMEM int ARM_MOVE_DELAY = 1 * 1000;
+
 //EEPROM storage structure: CalP1, CalP2, ColP1, CamP1, CamP2, ColP2 ColP3 ColP4 ColP5 ColP6 (8 points)
-const PROGMEM int EEPROMIntervals[]{0, sizeof(Point)*1, 
-sizeof(Point)*2, sizeof(Point)*3, 
-sizeof(Point)*4, sizeof(Point)*5, sizeof(Point)*6, 
-sizeof(Point)*7, sizeof(Point)*8, sizeof(Point)*9};
+const PROGMEM int EEPROMIntervals[] {0, sizeof(Point) * 1,
+        sizeof(Point) * 2, sizeof(Point) * 3,
+        sizeof(Point) * 4, sizeof(Point) * 5, sizeof(Point) * 6,
+        sizeof(Point) * 7, sizeof(Point) * 8, sizeof(Point) * 9
+};
 
 const PROGMEM int calStorageShift = 0;
 const PROGMEM int camStorageShift = calStorageShift + 2;
@@ -51,6 +55,10 @@ Point calibrationPoints[2];
 Point calibrationCamPoints[2];
 Point colorBoxPoints[6];
 
+float camToRealXMultiplier = 0.0f;
+float camToRealYMultiplier = 0.0f;
+Point camToRealOffset = Point();
+
 bool buttonState[] = {false, false, false, false, false};
 
 Stepper stepperX(STEPS_PER_REV, SPINS_X[0], SPINS_X[1], SPINS_X[2], SPINS_X[3]);
@@ -58,15 +66,14 @@ Stepper stepperY(STEPS_PER_REV, SPINS_Y[0], SPINS_Y[1], SPINS_Y[2], SPINS_Y[3]);
 
 Point cPos;
 
-bool hasCalibrationData[] = {false, false};
-
 void setup() {
   Serial.begin(9600);
   pushStatus(STATUS_SETUP_START);
 
   //Read and check calibration status
   readCalibrationData();
-  if (isCalibrated()) {
+  if (hasCalibrationData()) {
+    calculateCalibrationVars();
     pushStatus(STATUS_SETUP_CAL_READ);
   } else {
     pushStatus(STATUS_CAL_MISSING);
@@ -99,13 +106,18 @@ void serialRead() {
     String command = input.substring(0, 2);
     if (command == CODE_HOME) {
       homeSteppers();
+    } else if (command == CODE_MOVE) {
+      Point moveOffset = Point(input.substring(2, 4).toInt(), input.substring(6, 4).toInt());
+      goToPos(cPos + moveOffset);
     } else if (command == CODE_CALIBRATE) {
       int caliPointNumber = input.substring(2, 1).toInt();
       Point caliPointCam = Point(input.substring(3, 4).toInt(), input.substring(7, 4).toInt());
       Point caliPointReal = cPos;
       storeCalibrationData(caliPointNumber, caliPointCam, caliPointReal);
 
-      if (! isCalibrated()) {
+      if (hasCalibrationData()) {
+        calculateCalibrationVars();
+      } else {
         pushStatus(STATUS_CAL_MISSING);
       }
 
@@ -136,14 +148,14 @@ void homeSteppers() {
   cPos = Point();
 }
 
-void readColorPosData(){
-  for (int i = 0; i<6; i++){
-    EEPROM.get(EEPROMIntervals[i+colorStorageShift],colorBoxPoints[i]);
+void readColorPosData() {
+  for (int i = 0; i < 6; i++) {
+    EEPROM.get(EEPROMIntervals[i + colorStorageShift], colorBoxPoints[i]);
   }
 }
 
 void storeColorPosition(int colorNum, Point cPos) {
-  EEPROM.put(EEPROMIntervals[colorNum+colorStorageShift], cPos);
+  EEPROM.put(EEPROMIntervals[colorNum + colorStorageShift], cPos);
 }
 
 void readCalibrationData() {
@@ -154,56 +166,91 @@ void readCalibrationData() {
 }
 
 void storeCalibrationData(int caliPointNumber, Point caliPointCam, Point caliPointReal) {
-    EEPROM.put(EEPROMIntervals[caliPointNumber], caliPointReal);
-    EEPROM.put(EEPROMIntervals[caliPointNumber + camStorageShift], caliPointCam);
-    calibrationPoints[caliPointNumber] = caliPointReal;
-    calibrationCamPoints[caliPointNumber] = caliPointCam;
+  EEPROM.put(EEPROMIntervals[caliPointNumber], caliPointReal);
+  EEPROM.put(EEPROMIntervals[caliPointNumber + camStorageShift], caliPointCam);
+  calibrationPoints[caliPointNumber] = caliPointReal;
+  calibrationCamPoints[caliPointNumber] = caliPointCam;
 }
 
-bool isCalibrated() {
-  return calibrationPoints[0]!=Point(0,0) 
-    && calibrationPoints[1]!=Point(0,0) 
-    && calibrationCamPoints[0]!=Point(0,0) 
-    && calibrationCamPoints[1]!=Point(0,0);
+void calculateCalibrationVars() {
+  //Get difference between calibration points
+  Point realDiff = calibrationPoints[1] - calibrationPoints[0];
+  Point camDiff = calibrationCamPoints[1] - calibrationCamPoints[0];
+
+  //Multiplier for converting a cam to real pos calculated
+  camToRealXMultiplier = float(realDiff.x) / float(camDiff.x);
+  camToRealYMultiplier = float(realDiff.y) / float(camDiff.y);
+
+  //Offset from 0,0 calculated using multiplier
+  int camToRealXOffset = calibrationPoints[1].x - int(calibrationCamPoints[1].x * camToRealXMultiplier);
+  int camToRealYOffset = calibrationPoints[1].y - int(calibrationCamPoints[1].y * camToRealYMultiplier);
+  camToRealOffset = Point(camToRealXOffset, camToRealYOffset);
+}
+
+bool hasCalibrationData() {
+  return calibrationPoints[0] != Point(0, 0)
+         && calibrationPoints[1] != Point(0, 0)
+         && calibrationCamPoints[0] != Point(0, 0)
+         && calibrationCamPoints[1] != Point(0, 0);
+
 }
 
 void grabMMAndSort(int colorNum, Point mmCamPos) {
-  //TODOGrab M&M at camera position and move to matching container.
   Point stepPos = calculateStepPosFromCalibration(mmCamPos);
-  //Calculate real pos
-  //Goto pos - pick up
-  //Lookup colorpos, goto drop.
+  goToPos(stepPos);
+  pickUpAndHoldMM();
+  goToPos(colorBoxPoints[colorNum]);
+  releaseMM();
 }
 
-Point calculateStepPosFromCalibration(mmCamPos){
-  
+Point calculateStepPosFromCalibration(Point mmCamPos) {
+  float realXPos = float(mmCamPos.x) * camToRealXMultiplier;
+  float realYPos = float(mmCamPos.y) * camToRealYMultiplier;
+  Point realPos = Point(int(realXPos), int(realYPos));
+  realPos = realPos + camToRealOffset;
+  return realPos;
 }
 
-void goToPos(Point pos){
-  Point toMove = pos-cPos;
-  stepperX.step(toMove.x); //TODO, optimize
-  stepperY.step(toMove.y);
-  cPos = pos; 
+void goToPos(Point pos) {
+  Point toMove = pos - cPos;
+  while (toMove != Point(0, 0)) {
+    Point nextStep = toMove.sign();
+    stepperX.step(nextStep.x);
+    stepperY.step(nextStep.y);
+    toMove = toMove - nextStep;
+  }
+  cPos = pos;
+}
+
+void pickUpAndHoldMM() {
+  digitalWrite(RELAY_PIN_ARM, HIGH);
+  digitalWrite(RELAY_PIN_SUCC, HIGH);
+  delay(ARM_MOVE_DELAY);
+  digitalWrite(RELAY_PIN_ARM, LOW);
+}
+
+void releaseMM() {
+  digitalWrite(RELAY_PIN_SUCC, LOW);
 }
 
 void handleButtons() {
-  for(int i=0; i<NUM_BUTTONS; i++){
+  for (int i = 0; i < NUM_BUTTONS; i++) {
     bool buttonPressed = !digitalRead(BUTTON_PINS[i]); //Inverse because pullup
-    if (buttonPressed != buttonState[i]){
-      if (buttonPressed){
+    if (buttonPressed != buttonState[i]) {
+      if (buttonPressed) {
         sendButtonPressed(i);
-      }else{
+      } else {
         sendButtonReleased(i);
       }
-      buttonState[i]=buttonPressed;
+      buttonState[i] = buttonPressed;
     }
   }
 }
 
-void sendButtonPressed(int button){
+void sendButtonPressed(int button) {
   Serial.println(CODE_BUTTON_PUSH + button);
 }
 
-void sendButtonReleased(int button){
+void sendButtonReleased(int button) {
   Serial.println(CODE_BUTTON_RELEASE + button);
 }
