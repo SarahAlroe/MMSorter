@@ -1,0 +1,13 @@
+﻿"Symbol";"Value";"Unit";
+"TraceParts.PartNumber";"50-28062016-110492";"";
+"REFERENCE";"LM6UU";"";
+"TraceParts.PartTitle";"Linear Motion Ball Bearing Series (Standard/Adjustable/Open Type)";"";
+"TraceParts.InstanceId";"50-28062016-1104927T6URVQ3R4I8ZKVLI7SJ6ANK2";"";
+"DESIGN";"Linear Motion Ball Bearing Series,Standard Type LM6UU";"";
+"TraceParts.PartStatus";"Published";"";
+"TraceParts.PartStatusId";"";"";
+"SUPPLIER";"Ningbo Meiyate";"";
+"TraceParts.PartVersion";"1.1.3";"";
+"TRACEPARTS";"TRACEPARTS";"";
+"TraceParts.PartLanguage";"en";"";
+"TraceParts.ClassPath";"NINGBO_MEIYATE:/F_NINGBO_MEIYATE/NINGBO_MEIYATE.010/50-28062016-110492";"";
