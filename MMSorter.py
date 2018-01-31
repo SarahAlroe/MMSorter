@@ -9,12 +9,12 @@ def findPoints(image):
     gray = cv2.medianBlur(gray, 5)
 
     # Detect circles in the image
-    circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1.2, 50, param1=50, param2=25, minRadius=80, maxRadius=140)
+    detectedcircles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1.2, 50, param1=50, param2=25, minRadius=80, maxRadius=140)
 
     # Round xy coordinates to int
-    circles = np.round(circles[0, :]).astype("int")
+    detectedcircles = np.round(detectedcircles[0, :]).astype("int")
 
-    return circles
+    return detectedcircles
 
 def getNewImage():
     return cv2.imread("testimg.jpg")
@@ -48,7 +48,7 @@ def drawCirclesOnimage(image, circles):
         # Draw rectangle in middle of circle
         cv2.rectangle(image, (x - 5, y - 5), (x + 5, y + 5), (0, 128, 255), -1)
 
-        return image
+    return image
 
 screenWidth = 1920
 screenHeight = 1080
@@ -93,22 +93,18 @@ height, width, depth = image.shape
 circles = findPoints(image)
 
 # Only do circle stuff if any are actually found
-
-
 if circles is not None:
-    output = drawCirclesOnimage(image, circles)
+    output = drawCirclesOnimage(output, circles)
     cv2.imwrite("output2.jpg", output)
 
     # Show the output image
     outputScaled = cv2.resize(output, (int(screenHeight * screenImageProportion / output.shape[0] * output.shape[1]),
                                        int(screenHeight * screenImageProportion)))
     outputMenu = np.zeros((int(screenHeight * (1 - screenImageProportion)),
-                           int(screenHeight * screenImageProportion / output.shape[0] * output.shape[1]), 3))
+                           int(screenHeight * screenImageProportion / output.shape[0] * output.shape[1]), 3), np.uint8)
     drawWindowContent(outputScaled, outputMenu)
     #  Wait for a few clicks
     cv2.waitKey(0)
     cv2.waitKey(0)
     cv2.waitKey(0)
-
-
 
