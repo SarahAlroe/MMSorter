@@ -28,15 +28,15 @@ const PROGMEM String CODE_PUSH_STATUS = "PS";
 const PROGMEM int STEPS_PER_REV = 200;
 const PROGMEM int STEPPER_SPEED = 40;
 
-const PROGMEM int BUTTON_PINS[] = {A1, A2, A3, A4, A5};
+int BUTTON_PINS[] = {A1, A2, A3, A4, A5};
 const PROGMEM int NUM_BUTTONS = 5;
-const PROGMEM int SPINS_X[] = {7, 6, 5, 8};
-const PROGMEM int SPINS_Y[] = {11, 10, 9, 12};
-const PROGMEM int END_PIN_X = A0;
-const PROGMEM int END_PIN_Y = 13;
-const PROGMEM int RELAY_PIN_ARM = 2;
-const PROGMEM int RELAY_PIN_SUCC = 3;
-const PROGMEM int AUX_PIN = 4;
+int SPINS_X[] = {7, 6, 5, 8};
+int SPINS_Y[] = {11, 10, 9, 12};
+int END_PIN_X = A0;
+int END_PIN_Y = 13;
+int RELAY_PIN_ARM = 2;
+int RELAY_PIN_SUCC = 3;
+int AUX_PIN = 4;
 
 const PROGMEM int ARM_MOVE_DELAY = 1 * 1000;
 
@@ -90,6 +90,7 @@ void setup() {
   }
   pinMode(END_PIN_X, INPUT_PULLUP);
   pinMode(END_PIN_Y, INPUT_PULLUP);
+
 }
 
 void loop() {
@@ -235,7 +236,7 @@ void releaseMM() {
 
 void handleButtons() {
   for (int i = 0; i < NUM_BUTTONS; i++) {
-    bool buttonPressed = !digitalRead(BUTTON_PINS[i]); //Inverse because pullup
+    bool buttonPressed = (digitalRead(BUTTON_PINS[i])==LOW); //Inverse because pullup
     if (buttonPressed != buttonState[i]) {
       if (buttonPressed) {
         sendButtonPressed(i);
