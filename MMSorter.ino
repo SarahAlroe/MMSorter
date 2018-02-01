@@ -11,6 +11,7 @@ const PROGMEM String STATUS_MOVING = "Moving grab head";
 const PROGMEM String STATUS_GRAB = "Grabbing M&M";
 const PROGMEM String STATUS_RELEASE = "Releasing M&M";
 const PROGMEM String STATUS_IDLE = "Awaiting instructions";
+const PROGMEM String STATUS_HOME = "Homing to 0,0";
 
 const PROGMEM String CODE_RESET = "RS";
 const PROGMEM String CODE_MOVE = "MV";
@@ -108,11 +109,19 @@ void serialRead() {
     if (command == CODE_HOME) {
       homeSteppers();
     } else if (command == CODE_MOVE) {
-      Point moveOffset = Point(input.substring(2, 4).toInt(), input.substring(6, 4).toInt());
+      int xOffset = input.substring(3, 7).toInt();
+      if (input.substring(2, 3) == "-") {
+        xOffset = xOffset * -1;
+      }
+      int yOffset = input.substring(8, 12).toInt();
+      if (input.substring(7, 8) == "-") {
+        yOffset = yOffset * -1;
+      }
+      Point moveOffset = Point(xOffset, yOffset);
       goToPos(cPos + moveOffset);
     } else if (command == CODE_CALIBRATE) {
-      int caliPointNumber = input.substring(2, 1).toInt();
-      Point caliPointCam = Point(input.substring(3, 4).toInt(), input.substring(7, 4).toInt());
+      int caliPointNumber = input.substring(2, 3).toInt();
+      Point caliPointCam = Point(input.substring(3, 7).toInt(), input.substring(7, 11).toInt());
       Point caliPointReal = cPos;
       storeCalibrationData(caliPointNumber, caliPointCam, caliPointReal);
 
@@ -123,15 +132,16 @@ void serialRead() {
       }
 
     } else if (command == CODE_SET_COLOR) {
-      int colorNum = input.substring(2, 1).toInt();
+      int colorNum = input.substring(2, 3).toInt();
       storeColorPosition(colorNum, cPos);
 
     } else if (command == CODE_GRAB) {
-      int colorNum = input.substring(2, 1).toInt();
-      Point mmCamPos = Point(input.substring(3, 4).toInt(), input.substring(7, 4).toInt());
+      int colorNum = input.substring(2, 3).toInt();
+      Point mmCamPos = Point(input.substring(3, 7).toInt(), input.substring(7, 11).toInt());
       grabMMAndSort(colorNum, mmCamPos);
     }
     Serial.println(CODE_OK);
+    pushStatus(STATUS_IDLE);
   }
 }
 
@@ -139,11 +149,28 @@ void pushStatus(String statusMessage) {
   Serial.println(CODE_PUSH_STATUS + statusMessage);
 }
 
+void pushPos() {
+  String xPos = padNumberToString(cPos.x, 4);
+  String yPos = padNumberToString(cPos.y, 4);
+  Serial.println(CODE_CURRENT_POS + xPos + yPos);
+}
+String padNumberToString(int number, int stringLength) {
+  String numberString = String(number);
+  while (numberString.length() < stringLength) {
+    if (numberString.substring(0, 1) == "-") {
+      numberString = "-0" + numberString.substring(1);
+    } else {
+      numberString = "0" + numberString;
+    }
+  }
+  return numberString;
+}
+
 void homeSteppers() {
-  while (!digitalRead(END_PIN_X)) {
+  while (digitalRead(END_PIN_X)) {
     stepperX.step(-1);
   }
-  while (!digitalRead(END_PIN_Y)) {
+  while (digitalRead(END_PIN_Y)) {
     stepperY.step(-1);
   }
   cPos = Point();
@@ -198,9 +225,13 @@ bool hasCalibrationData() {
 
 void grabMMAndSort(int colorNum, Point mmCamPos) {
   Point stepPos = calculateStepPosFromCalibration(mmCamPos);
+  pushStatus(STATUS_MOVING);
   goToPos(stepPos);
+  pushStatus(STATUS_GRAB);
   pickUpAndHoldMM();
+  pushStatus(STATUS_MOVING);
   goToPos(colorBoxPoints[colorNum]);
+  pushStatus(STATUS_RELEASE);
   releaseMM();
 }
 
@@ -221,6 +252,7 @@ void goToPos(Point pos) {
     toMove = toMove - nextStep;
   }
   cPos = pos;
+  pushPos();
 }
 
 void pickUpAndHoldMM() {
@@ -236,7 +268,7 @@ void releaseMM() {
 
 void handleButtons() {
   for (int i = 0; i < NUM_BUTTONS; i++) {
-    bool buttonPressed = (digitalRead(BUTTON_PINS[i])==LOW); //Inverse because pullup
+    bool buttonPressed = (digitalRead(BUTTON_PINS[i]) == LOW); //Inverse because pullup
     if (buttonPressed != buttonState[i]) {
       if (buttonPressed) {
         sendButtonPressed(i);
