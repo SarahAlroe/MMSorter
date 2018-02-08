@@ -22,6 +22,7 @@ testMode = False
 if not testMode:
     from picamera.array import PiRGBArray
     from picamera import PiCamera
+    camera = PiCamera()
 
 serialTimeout = 1
 baudrate = 9600
@@ -115,7 +116,6 @@ def getNewImage():
     if testMode:
         return cv2.imread("testimg.jpg")
     else:
-        camera = PiCamera()
         rawCapture = PiRGBArray(camera)
         time.sleep(0.1)
         camera.capture(rawCapture, format="bgr")
