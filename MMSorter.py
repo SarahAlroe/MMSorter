@@ -5,7 +5,7 @@ import serial
 import time
 from enum import Enum
 
-
+#Appstate enums
 class AppState(Enum):
     IDLE = 1
     MOVE = 2
@@ -17,20 +17,30 @@ class AppState(Enum):
 #
 # Global consts
 #
-
-testMode = False
+# testMode - use picamera or local image
+testMode = True
 if not testMode:
     from picamera.array import PiRGBArray
     from picamera import PiCamera
+
     camera = PiCamera()
 
 serialTimeout = 1
 baudrate = 9600
 
+#Time to sleep between handling serial etc.
 sleep_time = 100
 
-#screenWidth = 1920
-#screenHeight = 1080
+#Consts for Hough circle detection
+houghMaxRadius = 65
+houghMinRadius = 55
+houghMinDist = 40
+houghDP = 1
+houghParam2 = 15
+houghParam1 = 20
+
+# screenWidth = 1920
+# screenHeight = 1080
 screenWidth = 1280
 screenHeight = 1024
 screenImageProportion = 0.8
@@ -75,9 +85,10 @@ colorListPos = 0
 # Function defs
 #
 
-def handleSerial():
+def handle_serial():
     global sorterStatus
     global isOk
+    #If new serial data, read it and interpret
     while ser.in_waiting != 0:
         line = ser.readline()
         print line
@@ -97,14 +108,14 @@ def handleSerial():
             sorterStatus = line[2:]
 
 
-def findPoints(image):
+def find_points(image):
     # Make gray slightly blurred image for optimal circle detection
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.medianBlur(gray, 5)
 
     # Detect circles in the image
-    detectedcircles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1.2, 50, param1=50, param2=25, minRadius=80,
-                                       maxRadius=140)
+    detectedcircles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, houghDP, houghMinDist, param1=houghParam1, param2=houghParam2,
+                                       minRadius=houghMinRadius, maxRadius=houghMaxRadius)
 
     # Round xy coordinates to int
     detectedcircles = np.round(detectedcircles[0, :]).astype("int")
@@ -112,9 +123,9 @@ def findPoints(image):
     return detectedcircles
 
 
-def getNewImage():
+def get_new_image():
     if testMode:
-        return cv2.imread("testimg.jpg")
+        return cv2.imread("realTest.jpg")
     else:
         rawCapture = PiRGBArray(camera)
         time.sleep(0.1)
@@ -122,25 +133,26 @@ def getNewImage():
         return rawCapture.array
 
 
-def drawWindowContent(outputScaled, outputMenu):
+def draw_window_content(outputScaled, outputMenu):
     cv2.imshow("MMSorter", np.concatenate((outputScaled, outputMenu), axis=0))
 
 
-def drawCirclesOnimage(image, circles):
+def draw_circles_on_image(image, circles):
     # For each circle as their xypos and radius
-    for circle in circles:
-        x = circle[0]
-        y = circle[1]
-        r = circle[2]
-        bestFit = get_circle_color(circle, image)
+    if circles is not None:
+        for circle in circles:
+            x = circle[0]
+            y = circle[1]
+            r = circle[2]
+            bestFit = get_circle_color(circle, image)
 
-        # cv2.circle(output, (x, y), r, (abs(pColors[bestFit][0]-meanVal[0]),abs(pColors[bestFit][1]-meanVal[1]),abs(pColors[bestFit][2]-meanVal[2])), -1)
-        # Draw inner circle of found color
-        cv2.circle(image, (x, y), r, pColors[bestFit], -1)
-        # Draw outer perimeter
-        cv2.circle(image, (x, y), r, (0, 255, 0), 4)
-        # Draw rectangle in middle of circle
-        cv2.rectangle(image, (x - 5, y - 5), (x + 5, y + 5), (0, 128, 255), -1)
+            # cv2.circle(output, (x, y), r, (abs(pColors[bestFit][0]-meanVal[0]),abs(pColors[bestFit][1]-meanVal[1]),abs(pColors[bestFit][2]-meanVal[2])), -1)
+            # Draw inner circle of found color
+            cv2.circle(image, (x, y), r, pColors[bestFit], -1)
+            # Draw outer perimeter
+            cv2.circle(image, (x, y), r, (0, 255, 0), 4)
+            # Draw rectangle in middle of circle
+            cv2.rectangle(image, (x - 5, y - 5), (x + 5, y + 5), (0, 128, 255), -1)
 
     return image
 
@@ -236,7 +248,7 @@ def home_machine():
 def wait_for_ok():
     global isOk
     while not isOk:
-        handleSerial()
+        handle_serial()
         cv2.waitKey(sleep_time)
 
 
@@ -244,32 +256,32 @@ def start_guided_calibration():
     global calibrateText
     for i in range(0, 2):
         home_machine()
-        image = getNewImage()
+        image = get_new_image()
         outputScaled = resize_img_for_screen(image)
         if i == 0:
             calibrateText = "Please place a blue M&M 5 cm from corner nearest home \nand press middle button"
         else:
             calibrateText = "Please place a blue M&M 5 cm from corner furthest home \nand press middle button"
         outputMenu = generate_menu_image_from_shape(outputScaled.shape)
-        drawWindowContent(outputScaled, outputMenu)
+        draw_window_content(outputScaled, outputMenu)
         while not buttonClicked[0]:
-            handleSerial()
+            handle_serial()
             cv2.waitKey(sleep_time)
         while buttonClicked[0]:
-            handleSerial()
+            handle_serial()
             cv2.waitKey(sleep_time)
-        image = getNewImage()
-        circles = findPoints(image)
-        output = drawCirclesOnimage(image, circles)
+        image = get_new_image()
+        circles = find_points(image)
+        output = draw_circles_on_image(image, circles)
         cv2.rectangle(output, (circles[0][0] - circles[0][2], circles[0][1] - circles[0][2]),
                       (circles[0][0] + circles[0][2], circles[0][1] + circles[0][2]), (255, 255, 255), 5)
         outputScaled = resize_img_for_screen(output)
         caliPoint = circles[0]
         calibrateText = "Please move head to M&M \nand press middle button"
         outputMenu = generate_menu_image_from_shape(outputScaled.shape)
-        drawWindowContent(outputScaled, outputMenu)
+        draw_window_content(outputScaled, outputMenu)
         while not buttonClicked[0]:
-            handleSerial()
+            handle_serial()
             isMoving = False
             global isOk
             isOk = False
@@ -288,10 +300,10 @@ def start_guided_calibration():
             if isMoving:
                 wait_for_ok()
             outputMenu = generate_menu_image_from_shape(outputScaled.shape)
-            drawWindowContent(outputScaled, outputMenu)
+            draw_window_content(outputScaled, outputMenu)
             cv2.waitKey(sleep_time)
         while buttonClicked[0]:
-            handleSerial()
+            handle_serial()
             cv2.waitKey(sleep_time)
         x_pos_padded = pad_to_string(caliPoint[0], 4)
         y_pos_padded = pad_to_string(caliPoint[1], 4)
@@ -309,13 +321,13 @@ def pad_to_string(number, length):
 def sort_mms():
     global isOk
     home_machine()
-    image = getNewImage()
+    image = get_new_image()
     output = image.copy()
-    circles = findPoints(image)
+    circles = find_points(image)
 
     # Only do circle stuff if any are actually found
     if circles is not None:
-        output = drawCirclesOnimage(output, circles)
+        output = draw_circles_on_image(output, circles)
         willBreak = False
         for circle in circles:
             marked_output = output.copy()
@@ -328,9 +340,9 @@ def sort_mms():
             isOk = False
             ser.write("GB" + colorString + x_padded + y_padded + "\n")
             while (not isOk) and (not willBreak):
-                handleSerial()
+                handle_serial()
                 outputMenu = generate_menu_image_from_shape(output.shape)
-                drawWindowContent(outputScaled, outputMenu)
+                draw_window_content(outputScaled, outputMenu)
                 cv2.waitKey(sleep_time)
                 if buttonClicked[0]:
                     willBreak = True
@@ -350,10 +362,10 @@ cv2.namedWindow("MMSorter", cv2.WINDOW_NORMAL)
 cv2.setWindowProperty("MMSorter", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
 # Get image
-image = getNewImage()
+image = get_new_image()
 outputScaled = resize_img_for_screen(image)
 while True:
-    handleSerial()
+    handle_serial()
     if currentState == AppState.IDLE:
         if buttonClicked[0]:
             currentState = AppState.ACTIVE
@@ -404,5 +416,5 @@ while True:
         start_guided_calibration()
         currentState = AppState.IDLE
     outputMenu = generate_menu_image_from_shape(image.shape)
-    drawWindowContent(outputScaled, outputMenu)
+    draw_window_content(outputScaled, outputMenu)
     cv2.waitKey(sleep_time)
