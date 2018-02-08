@@ -17,13 +17,26 @@ class AppState(Enum):
 #
 # Global consts
 #
+
+testMode = False
+if not testMode:
+    from picamera.array import PiRGBArray
+    from picamera import PiCamera
+
+    camera = PiCamera()
+    rawCapture = PiRGBArray(camera)
+
+    time.sleep(0.1)
+
 serialTimeout = 1
 baudrate = 9600
 
 sleep_time = 100
 
-screenWidth = 1920
-screenHeight = 1080
+#screenWidth = 1920
+#screenHeight = 1080
+screenWidth = 1280
+screenHeight = 1024
 screenImageProportion = 0.8
 font = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -104,7 +117,11 @@ def findPoints(image):
 
 
 def getNewImage():
-    return cv2.imread("testimg.jpg")
+    if testMode:
+        return cv2.imread("testimg.jpg")
+    else:
+        camera.capture(rawCapture, format="bgr")
+        return rawCapture.array
 
 
 def drawWindowContent(outputScaled, outputMenu):
