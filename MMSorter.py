@@ -1,11 +1,15 @@
 # import the necessary packages
 import numpy as np
 import cv2
+import pickle
 import serial
 import time
 from enum import Enum
 
 #Appstate enums
+colorDataFilename = "mmColors.data"
+
+
 class AppState(Enum):
     IDLE = 1
     MOVE = 2
@@ -68,6 +72,15 @@ iYellow = (70, 146, 155)
 iOrange = (70, 102, 151)
 iBrown = (25, 30, 39)
 iColors = [iRed, iGreen, iBlue, iYellow, iOrange, iBrown]
+
+#Try opening color values from previous calibration
+try:
+    fd = open(colorDataFilename, "rb")
+    iColors = pickle.load(fd)
+    fd.close()
+except:
+    print "Loading M&M color file failed. Using defaults"
+
 nColors = ["Red", "Green", "Blue", "Yellow", "Orange", "Brown"]
 
 #
@@ -252,6 +265,21 @@ def wait_for_ok():
         cv2.waitKey(sleep_time)
 
 
+def get_average_circle_color(circles, image):
+    # Create mask
+    circleImg = np.zeros((image.shape[0], image.shape[1]), dtype=image.dtype)
+
+    for circle in circles:
+        x = circle[0]
+        y = circle[1]
+        r = circle[2]
+        # Add mask for each circle
+        cv2.circle(circleImg, (x, y), r, 1, -1)
+    # Get average color of all circles
+    meanVal = cv2.mean(image, mask=circleImg)
+    return meanVal
+
+
 def start_guided_calibration():
     global calibrateText
     for i in range(0, 2):
@@ -309,6 +337,24 @@ def start_guided_calibration():
         y_pos_padded = pad_to_string(caliPoint[1], 4)
         ser.write("CA" + str(i) + x_pos_padded + y_pos_padded)
         wait_for_ok()
+    home_machine()
+    for i in range(0, 6):
+        image = get_new_image()
+        outputScaled = resize_img_for_screen(image)
+        calibrateText = "Calibrating colors. Please put "+nColors[i]+" M&M's in sorting field \nand press middle button. More is more."
+        outputMenu = generate_menu_image_from_shape(outputScaled.shape)
+        draw_window_content(outputScaled, outputMenu)
+        while not buttonClicked[0]:
+            handle_serial()
+            cv2.waitKey(sleep_time)
+        image = get_new_image()
+        circles = find_points(image)
+        circleColor = get_average_circle_color(circles, image)
+        print circleColor
+        iColors[i] = circleColor
+    fw = open(colorDataFilename, "wb")
+    pickle.dump(iColors, fw)
+    fw.close()
 
 
 def pad_to_string(number, length):
